@@ -1,0 +1,100 @@
+// SPDX-License-Identifier: MIT 
+pragma solidity ^0.8.0;
+
+contract Crowdfunding {
+    string public name;
+    string public description;
+    uint256 public goal;
+    uint256 public deadline;
+    address public owner;
+
+    enum CampaignState { Active, Successful, Failed }
+    CampaignState public state;
+
+    struct Tier {
+        string name;
+        uint256 amount;
+        uint256 backers;
+    }
+
+    Tier[] public tiers;
+
+    modifier OnlyOwner() {
+        require(msg.sender == owner, "Only The Philosopher can do this!");
+    _;
+}
+
+    modifier campaignOpen() {
+        require(state == CampaignState.Active, "Campaign is not active");
+    _;
+
+}
+
+    constructor(
+        string memory _name,
+        string memory _description,
+        uint256 _goal,
+        uint256 _durationindays
+        ) {
+            name = _name;
+            description = _description;
+            goal = _goal;
+            deadline = block.timestamp + (_durationindays * 1 days);
+            owner = msg.sender;
+            state = CampaignState.Active;
+        }
+
+        function checkAndUpdateCampaignState() internal {
+            if(state == CampaignState.Active) {
+                if(block.timestamp >= deadline) {
+                    state = address(this).balance >= goal ? CampaignState.Successful : CampaignState.Failed;
+                }else {
+                    state = address(this).balance >= goal ? CampaignState.Successful : CampaignState.Active;
+
+                }
+            }
+
+        }
+
+        function fund(uint256 _tierIndex) public payable campaignOpen {
+            require(msg.value > 0, "Must fund amount greater than 0.");
+            require(block.timestamp < deadline, "Campaign has ended.");
+            require(_tierIndex < tiers.length, "Non-existent Tier!");
+            require(msg.value == tiers[_tierIndex].amount, "Try the correct amount! :D");
+
+            tiers[_tierIndex].backers++;
+            checkAndUpdateCampaignState();
+        }
+
+        function addTier(
+            string memory _name,
+            uint256 _amount
+        )public OnlyOwner {
+            require(_amount > 0, "The amoung must be greater than 0.");
+            tiers.push(Tier(_name, _amount, 0));
+        }
+
+        function removeTier(uint256 _index) public OnlyOwner {
+            require(_index < tiers.length, "You found a non-existent tier!");
+            tiers[_index] = tiers[tiers.length - 1];
+            tiers.pop();
+        }
+        
+        function withdraw() public OnlyOwner {
+            checkAndUpdateCampaignState();
+            require(state == CampaignState.Successful, "The campaign was not successful yet.");
+
+            require(msg.sender == owner, "Only withdrawable by The Philosopher.");
+            require(address(this).balance >= goal, "The goal has not yet been reached.");
+
+            uint256 balance = address(this).balance;
+            require(balance > 0, "No balance to withdraw, keep working!");
+
+            payable(owner).transfer(balance);
+        }
+        
+        function getContractBalance() public view returns (uint256) {
+            return address(this).balance;
+        }
+
+}
